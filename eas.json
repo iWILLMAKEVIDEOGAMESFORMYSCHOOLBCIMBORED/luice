@@ -1,0 +1,30 @@
+{
+  "cli": {
+    "version": ">= 5.9.3"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": {
+        "distribution": "ad-hoc"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "ios": {
+        "distribution": "app-store",
+        "resourceClass": "m1-medium"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

@@ -1,0 +1,94 @@
+workflows:
+  ios-release:
+    name: Juiceify iOS Release
+    max_build_duration: 120
+    instance_type: mac_mini_m1
+
+    environment:
+      node: 20.11.0
+      xcode: latest
+      cocoapods: default
+      vars:
+        EXPO_TOKEN: $EXPO_TOKEN
+        BUNDLE_ID: com.juiceify.app
+
+    scripts:
+      - name: Install Expo & EAS CLI
+        script: |
+          npm install -g expo-cli@latest eas-cli@latest
+
+      - name: Install npm dependencies
+        script: |
+          cd $CM_BUILD_DIR
+          npm install
+
+      - name: Set up EAS project
+        script: |
+          cd $CM_BUILD_DIR
+          eas whoami
+
+      - name: Build iOS IPA with EAS (local)
+        script: |
+          cd $CM_BUILD_DIR
+          eas build \
+            --platform ios \
+            --profile production \
+            --non-interactive \
+            --local \
+            --output $CM_EXPORT_DIR/Juiceify.ipa
+
+    artifacts:
+      - $CM_EXPORT_DIR/Juiceify.ipa
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      email:
+        recipients:
+          - $CM_NOTIFY_EMAIL
+        notify:
+          success: true
+          failure: true
+
+  ios-adhoc:
+    name: Juiceify iOS Ad Hoc
+    max_build_duration: 120
+    instance_type: mac_mini_m1
+
+    environment:
+      node: 20.11.0
+      xcode: latest
+      cocoapods: default
+      vars:
+        EXPO_TOKEN: $EXPO_TOKEN
+        BUNDLE_ID: com.juiceify.app
+
+    scripts:
+      - name: Install Expo & EAS CLI
+        script: |
+          npm install -g expo-cli@latest eas-cli@latest
+
+      - name: Install npm dependencies
+        script: |
+          cd $CM_BUILD_DIR
+          npm install
+
+      - name: Build iOS Ad Hoc IPA
+        script: |
+          cd $CM_BUILD_DIR
+          eas build \
+            --platform ios \
+            --profile preview \
+            --non-interactive \
+            --local \
+            --output $CM_EXPORT_DIR/Juiceify-adhoc.ipa
+
+    artifacts:
+      - $CM_EXPORT_DIR/Juiceify-adhoc.ipa
+
+    publishing:
+      email:
+        recipients:
+          - $CM_NOTIFY_EMAIL
+        notify:
+          success: true
+          failure: true

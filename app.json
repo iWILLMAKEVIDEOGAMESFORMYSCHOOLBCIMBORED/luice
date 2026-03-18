@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Juiceify",
+    "slug": "juiceify",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0A0F"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.juiceify.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Juiceify uses audio playback.",
+        "UIBackgroundModes": ["audio", "remote-notification"]
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0A0A0F"
+      },
+      "package": "com.juiceify.app",
+      "permissions": ["INTERNET", "ACCESS_NETWORK_STATE"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      ["expo-av", { "microphonePermission": false }]
+    ],
+    "extra": {
+      "googleDriveApiKey": "YOUR_GOOGLE_DRIVE_API_KEY_HERE",
+      "driveFolderId": "1oDmvdWmmopdYP8j10T1ectgopHVANSVl",
+      "eas": {
+        "projectId": "YOUR_EAS_PROJECT_ID"
+      }
+    }
+  }
+}
