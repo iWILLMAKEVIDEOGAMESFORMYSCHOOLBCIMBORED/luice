@@ -1,95 +1,59 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
-import { JUICE_WRLD_SONGS } from '../data/songs';
-import { fetchDriveSongs, GOOGLE_API_KEY } from '../services/GoogleDriveService';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Animated, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useMusic } from '../context/MusicContext';
 
-const MusicContext = createContext(null);
+export default function DriveStatusBanner() {
+  const { driveLoading, driveLoaded, driveError, driveSongCount, reloadDrive } = useMusic();
+  const opacity = useRef(new Animated.Value(0)).current;
+  const visible = driveLoading || driveError;
 
-export const MusicProvider = ({ children }) => {
-  const [allSongs, setAllSongs] = useState(JUICE_WRLD_SONGS);
-  const [driveLoaded, setDriveLoaded] = useState(false);
-  const [driveLoading, setDriveLoading] = useState(false);
-  const [driveError, setDriveError] = useState(null);
-  const [driveSongCount, setDriveSongCount] = useState(0);
+  useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: visible ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  }, [visible]);
 
-  const [currentSong, setCurrentSong] = useState(null);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [queue, setQueue] = useState([]);
-  const [queueIndex, setQueueIndex] = useState(0);
-  const [showPlayer, setShowPlayer] = useState(false);
-  const [playerExpanded, setPlayerExpanded] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [liked, setLiked] = useState([]);
-  const [recentlyPlayed, setRecentlyPlayed] = useState([]);
-  const soundRef = useRef(null);
-
-  useEffect(() => { loadDriveSongs(); }, []);
-
-  const loadDriveSongs = async () => {
-    if (!GOOGLE_API_KEY || GOOGLE_API_KEY === 'YOUR_GOOGLE_DRIVE_API_KEY_HERE') return;
-    setDriveLoading(true);
-    setDriveError(null);
-    try {
-      const driveSongs = await fetchDriveSongs();
-      if (driveSongs.length > 0) {
-        const releasedHardcoded = JUICE_WRLD_SONGS.filter(s => s.type === 'released');
-        setAllSongs([...releasedHardcoded, ...driveSongs]);
-        setDriveSongCount(driveSongs.length);
-        setDriveLoaded(true);
-      }
-    } catch (err) {
-      setDriveError(err.message);
-    } finally {
-      setDriveLoading(false);
-    }
-  };
-
-  const playSong = useCallback((song, songList = null) => {
-    const list = songList || allSongs;
-    const index = list.findIndex(s => s.id === song.id);
-    setQueue(list);
-    setQueueIndex(index >= 0 ? index : 0);
-    setCurrentSong(song);
-    setIsPlaying(true);
-    setShowPlayer(true);
-    setProgress(0);
-    setRecentlyPlayed(prev => [song, ...prev.filter(s => s.id !== song.id)].slice(0, 20));
-  }, [allSongs]);
-
-  const playNext = useCallback(() => {
-    if (!queue.length) return;
-    const i = (queueIndex + 1) % queue.length;
-    setQueueIndex(i); setCurrentSong(queue[i]); setIsPlaying(true); setProgress(0);
-  }, [queue, queueIndex]);
-
-  const playPrev = useCallback(() => {
-    if (!queue.length) return;
-    const i = queueIndex === 0 ? queue.length - 1 : queueIndex - 1;
-    setQueueIndex(i); setCurrentSong(queue[i]); setIsPlaying(true); setProgress(0);
-  }, [queue, queueIndex]);
-
-  const togglePlay = useCallback(() => setIsPlaying(p => !p), []);
-  const toggleLike = useCallback((id) => setLiked(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id]), []);
-  const isLiked = useCallback((id) => liked.includes(id), [liked]);
+  if (!visible && !driveLoaded) return null;
 
   return (
-    <MusicContext.Provider value={{
-      allSongs,
-      releasedSongs: allSongs.filter(s => s.type === 'released'),
-      unreleasedSongs: allSongs.filter(s => s.type === 'unreleased'),
-      driveLoaded, driveLoading, driveError, driveSongCount,
-      reloadDrive: loadDriveSongs,
-      currentSong, isPlaying, queue, showPlayer, playerExpanded,
-      progress, liked, recentlyPlayed, soundRef,
-      playSong, playNext, playPrev, togglePlay, toggleLike, isLiked,
-      setShowPlayer, setPlayerExpanded, setProgress, setIsPlaying,
-    }}>
-      {children}
-    </MusicContext.Provider>
+    <Animated.View style={[styles.banner, { opacity }]}>
+      {driveLoading && (
+        <View style={styles.row}>
+          <Ionicons name="cloud-download-outline" size={14} color="#D7BDE2" />
+          <Text style={styles.text}>Loading songs from your Drive...</Text>
+        </View>
+      )}
+      {driveError && (
+        <TouchableOpacity style={styles.row} onPress={reloadDrive}>
+          <Ionicons name="warning-outline" size={14} color="#E74C3C" />
+          <Text style={[styles.text, { color: '#E74C3C' }]}>Drive error — tap to retry</Text>
+        </TouchableOpacity>
+      )}
+      {driveLoaded && !driveLoading && (
+        <View style={styles.row}>
+          <Ionicons name="checkmark-circle-outline" size={14} color="#2ECC71" />
+          <Text style={[styles.text, { color: '#2ECC71' }]}>
+            {driveSongCount} songs loaded from your Drive 🍇
+          </Text>
+        </View>
+      )}
+    </Animated.View>
   );
-};
+}
 
-export const useMusic = () => {
-  const ctx = useContext(MusicContext);
-  if (!ctx) throw new Error('useMusic must be used within MusicProvider');
-  return ctx;
-};
+const styles = StyleSheet.create({
+  banner: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    backgroundColor: 'rgba(26,10,46,0.95)',
+    paddingVertical: 8, paddingHorizontal: 16,
+    zIndex: 9999,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(155,89,182,0.3)',
+  },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  text: { color: '#D7BDE2', fontSize: 12, fontWeight: '500' },
+});

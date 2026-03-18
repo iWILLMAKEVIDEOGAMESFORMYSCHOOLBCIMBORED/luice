@@ -1,298 +1,254 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View, Text, TouchableOpacity, StyleSheet, Dimensions,
-  Modal, Image, ScrollView, ActivityIndicator,
-} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons } from '@expo/vector-icons';
-import YoutubeIframe from 'react-native-youtube-iframe';
-import { useMusic } from '../context/MusicContext';
-import { formatDuration } from '../data/songs';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+/**
+ * GoogleDriveService.js
+ *
+ * Connects directly to the public Juice WRLD Google Drive folder:
+ * https://drive.google.com/drive/folders/1oDmvdWmmopdYP8j10T1ectgopHVANSVl
+ *
+ * Uses the Google Drive API v3 to:
+ *   1. List all MP3/audio files in the folder (+ subfolders)
+ *   2. Build stream URLs for each file
+ *   3. Fetch thumbnail/cover art per file
+ *   4. Parse metadata from filenames
+ */
 
-const { width } = Dimensions.get('window');
+// ─────────────────────────────────────────────────────────────
+// CONFIGURATION — fill in your Google API key
+// Get one free at: https://console.cloud.google.com
+//   → Enable "Google Drive API"
+//   → Create API Key (restrict to Drive API + your bundle ID)
+// ─────────────────────────────────────────────────────────────
+export const GOOGLE_API_KEY = 'YOUR_GOOGLE_DRIVE_API_KEY_HERE';
 
-export default function FullPlayer() {
-  const {
-    currentSong, isPlaying, togglePlay, playNext, playPrev,
-    playerExpanded, setPlayerExpanded, queue, playSong,
-    toggleLike, isLiked, progress,
-  } = useMusic();
-  const [showQueue, setShowQueue] = useState(false);
-  const [shuffle, setShuffle] = useState(false);
-  const [repeat, setRepeat] = useState(false);
-  const insets = useSafeAreaInsets();
+// The shared folder ID from the Drive URL
+const ROOT_FOLDER_ID = '1oDmvdWmmopdYP8j10T1ectgopHVANSVl';
 
-  const onYTStateChange = useCallback((state) => {
-    if (state === 'ended') playNext();
-  }, [playNext]);
+const BASE = 'https://www.googleapis.com/drive/v3';
 
-  if (!currentSong || !playerExpanded) return null;
+// Audio MIME types to accept
+const AUDIO_MIMES = [
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/mp4',
+  'audio/x-m4a',
+  'audio/wav',
+  'audio/flac',
+  'audio/ogg',
+  'application/octet-stream', // some Drive uploads
+];
 
-  const likedSong = isLiked(currentSong.id);
-  const isDriveSource = currentSong.source === 'googledrive';
-  const progressPct = `${Math.round((progress || 0) * 100)}%`;
-  const elapsed = currentSong.duration ? Math.round(progress * currentSong.duration) : 0;
-
-  return (
-    <Modal visible={playerExpanded} animationType="slide" presentationStyle="fullScreen" statusBarTranslucent>
-      <LinearGradient
-        colors={['#1A0A2E', '#0D0D1A', '#0A0A0F']}
-        style={[styles.container, { paddingTop: insets.top, paddingBottom: insets.bottom }]}
-      >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => setPlayerExpanded(false)} style={styles.iconBtn}>
-            <Ionicons name="chevron-down" size={28} color="#fff" />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.nowPlaying}>NOW PLAYING</Text>
-            <View style={styles.sourceRow}>
-              {isDriveSource ? (
-                <View style={styles.sourceBadge}>
-                  <Ionicons name="cloud" size={10} color="#D7BDE2" />
-                  <Text style={styles.sourceBadgeText}> DRIVE</Text>
-                </View>
-              ) : (
-                <View style={[styles.sourceBadge, { backgroundColor: 'rgba(255,0,0,0.2)' }]}>
-                  <Ionicons name="logo-youtube" size={10} color="#FF6B6B" />
-                  <Text style={[styles.sourceBadgeText, { color: '#FF6B6B' }]}> YOUTUBE</Text>
-                </View>
-              )}
-              {currentSong.type === 'unreleased' && (
-                <View style={[styles.sourceBadge, { backgroundColor: 'rgba(155,89,182,0.3)' }]}>
-                  <Text style={styles.sourceBadgeText}>🔒 VAULT</Text>
-                </View>
-              )}
-            </View>
-          </View>
-          <TouchableOpacity onPress={() => setShowQueue(!showQueue)} style={styles.iconBtn}>
-            <Ionicons name="list" size={22} color={showQueue ? '#9B59B6' : '#888'} />
-          </TouchableOpacity>
-        </View>
-
-        {!showQueue ? (
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
-
-            {/* Album Art */}
-            <View style={styles.artWrap}>
-              <Image source={{ uri: currentSong.albumArt }} style={styles.art} />
-              <View style={styles.artShadow} />
-            </View>
-
-            {/* YouTube Player (hidden) — only for non-Drive songs */}
-            {!isDriveSource && currentSong.videoId && (
-              <View style={styles.ytHidden}>
-                <YoutubeIframe
-                  height={160}
-                  width={width - 32}
-                  videoId={currentSong.videoId}
-                  play={isPlaying}
-                  onChangeState={onYTStateChange}
-                  webViewStyle={{ opacity: 0.01 }}
-                  initialPlayerParams={{ controls: false, modestbranding: true, rel: false }}
-                />
-              </View>
-            )}
-
-            {/* Drive source: AudioPlayer handles it invisibly */}
-            {isDriveSource && (
-              <View style={styles.driveBadgeRow}>
-                <Ionicons name="cloud-done-outline" size={14} color="#9B59B6" />
-                <Text style={styles.driveText}>Streaming from your Google Drive</Text>
-              </View>
-            )}
-
-            {/* Song Info */}
-            <View style={styles.songInfo}>
-              <View style={styles.songInfoLeft}>
-                <Text style={styles.songTitle} numberOfLines={1}>{currentSong.title}</Text>
-                <Text style={styles.songArtist}>Juice WRLD</Text>
-                <Text style={styles.songAlbum}>{currentSong.album} • {currentSong.year}</Text>
-              </View>
-              <TouchableOpacity onPress={() => toggleLike(currentSong.id)} style={styles.iconBtn}>
-                <Ionicons name={likedSong ? 'heart' : 'heart-outline'} size={26} color={likedSong ? '#9B59B6' : '#555'} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Progress Bar */}
-            <View style={styles.progressWrap}>
-              <View style={styles.progressTrack}>
-                <View style={[styles.progressFill, { width: progressPct }]} />
-                <View style={[styles.progressThumb, { left: progressPct }]} />
-              </View>
-              <View style={styles.progressTimes}>
-                <Text style={styles.timeText}>
-                  {elapsed > 0 ? formatDuration(elapsed) : '0:00'}
-                </Text>
-                <Text style={styles.timeText}>
-                  {currentSong.duration > 0 ? `-${formatDuration(currentSong.duration - elapsed)}` : '--:--'}
-                </Text>
-              </View>
-            </View>
-
-            {/* Main Controls */}
-            <View style={styles.controls}>
-              <TouchableOpacity onPress={playPrev} style={styles.iconBtn}>
-                <Ionicons name="play-skip-back" size={26} color="#fff" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={togglePlay} style={styles.playBtn}>
-                <LinearGradient colors={['#9B59B6', '#6C3483']} style={styles.playBtnGrad}>
-                  {isPlaying
-                    ? <Ionicons name="pause" size={32} color="#fff" />
-                    : <Ionicons name="play" size={32} color="#fff" style={{ marginLeft: 4 }} />
-                  }
-                </LinearGradient>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={playNext} style={styles.iconBtn}>
-                <Ionicons name="play-skip-forward" size={26} color="#fff" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Secondary Controls */}
-            <View style={styles.secondaryControls}>
-              <TouchableOpacity
-                style={[styles.secondaryBtn, shuffle && styles.secondaryBtnActive]}
-                onPress={() => setShuffle(p => !p)}
-              >
-                <Ionicons name="shuffle" size={20} color={shuffle ? '#9B59B6' : '#555'} />
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.secondaryBtn, repeat && styles.secondaryBtnActive]}
-                onPress={() => setRepeat(p => !p)}
-              >
-                <Ionicons name="repeat" size={20} color={repeat ? '#9B59B6' : '#555'} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryBtn}>
-                <Ionicons name="share-outline" size={20} color="#555" />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.secondaryBtn}>
-                <Ionicons name="ellipsis-horizontal" size={20} color="#555" />
-              </TouchableOpacity>
-            </View>
-
-          </ScrollView>
-        ) : (
-          /* Queue View */
-          <View style={styles.queueWrap}>
-            <View style={styles.queueHeaderRow}>
-              <Text style={styles.queueTitle}>Up Next</Text>
-              <Text style={styles.queueCount}>{queue.length} songs</Text>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {queue.map((song) => (
-                <TouchableOpacity
-                  key={song.id}
-                  style={[styles.queueRow, currentSong.id === song.id && styles.queueRowActive]}
-                  onPress={() => playSong(song, queue)}
-                >
-                  <Image source={{ uri: song.albumArt }} style={styles.queueArt} />
-                  <View style={styles.queueInfo}>
-                    <Text
-                      style={[styles.queueSongTitle, currentSong.id === song.id && styles.queueSongActive]}
-                      numberOfLines={1}
-                    >
-                      {song.title}
-                    </Text>
-                    <View style={styles.queueMetaRow}>
-                      {song.source === 'googledrive' && (
-                        <Ionicons name="cloud" size={10} color="#9B59B6" style={{ marginRight: 3 }} />
-                      )}
-                      <Text style={styles.queueMeta}>{song.year}</Text>
-                      {song.duration > 0 && <Text style={styles.queueMeta}> • {formatDuration(song.duration)}</Text>}
-                    </View>
-                  </View>
-                  {currentSong.id === song.id && (
-                    <Ionicons name="musical-notes" size={16} color="#9B59B6" />
-                  )}
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          </View>
-        )}
-      </LinearGradient>
-    </Modal>
+// ─────────────────────────────────────────────────────────────
+// Fetch all files in a folder (paginates automatically)
+// ─────────────────────────────────────────────────────────────
+async function listFilesInFolder(folderId, apiKey, pageToken = null) {
+  const mimeQuery = AUDIO_MIMES.map(m => `mimeType='${m}'`).join(' or ');
+  const query = encodeURIComponent(
+    `'${folderId}' in parents and (${mimeQuery}) and trashed=false`
   );
+
+  let url =
+    `${BASE}/files?` +
+    `q=${query}` +
+    `&key=${apiKey}` +
+    `&fields=nextPageToken,files(id,name,mimeType,thumbnailLink,size,modifiedTime)` +
+    `&pageSize=1000` +
+    `&orderBy=name`;
+
+  if (pageToken) url += `&pageToken=${pageToken}`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Drive API error ${res.status}: ${await res.text()}`);
+  return res.json();
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scroll: { paddingBottom: 20 },
+// ─────────────────────────────────────────────────────────────
+// Fetch all subfolders inside a folder
+// ─────────────────────────────────────────────────────────────
+async function listSubfolders(folderId, apiKey) {
+  const query = encodeURIComponent(
+    `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`
+  );
+  const url =
+    `${BASE}/files?` +
+    `q=${query}` +
+    `&key=${apiKey}` +
+    `&fields=files(id,name)` +
+    `&pageSize=100`;
 
-  header: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingVertical: 12,
-  },
-  iconBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
-  headerCenter: { alignItems: 'center', flex: 1 },
-  nowPlaying: { color: '#666', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, marginBottom: 4 },
-  sourceRow: { flexDirection: 'row', gap: 6 },
-  sourceBadge: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(155,89,182,0.2)', borderRadius: 6,
-    paddingHorizontal: 6, paddingVertical: 2,
-  },
-  sourceBadgeText: { color: '#D7BDE2', fontSize: 9, fontWeight: '700' },
+  const res = await fetch(url);
+  if (!res.ok) return [];
+  const data = await res.json();
+  return data.files || [];
+}
 
-  artWrap: { alignItems: 'center', marginVertical: 24, position: 'relative' },
-  art: {
-    width: width - 72, height: width - 72, borderRadius: 20,
-    shadowColor: '#9B59B6', shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.4, shadowRadius: 24,
-  },
-  artShadow: {
-    position: 'absolute', bottom: -16,
-    width: width - 120, height: 30, borderRadius: 40,
-    backgroundColor: 'rgba(155,89,182,0.3)',
-    shadowColor: '#9B59B6', shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6, shadowRadius: 20,
-  },
+// ─────────────────────────────────────────────────────────────
+// Recursively collect every audio file from folder tree
+// ─────────────────────────────────────────────────────────────
+async function getAllAudioFiles(folderId, apiKey, folderName = '') {
+  let allFiles = [];
 
-  ytHidden: { height: 1, overflow: 'hidden', marginBottom: 4 },
+  // Get audio files in this folder
+  let pageToken = null;
+  do {
+    const data = await listFilesInFolder(folderId, apiKey, pageToken);
+    const files = (data.files || []).map(f => ({ ...f, _folderName: folderName }));
+    allFiles = allFiles.concat(files);
+    pageToken = data.nextPageToken || null;
+  } while (pageToken);
 
-  driveBadgeRow: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 5, marginBottom: 8,
-  },
-  driveText: { color: '#9B59B6', fontSize: 11, fontWeight: '500' },
+  // Recurse into subfolders
+  const subfolders = await listSubfolders(folderId, apiKey);
+  for (const sub of subfolders) {
+    const subFiles = await getAllAudioFiles(sub.id, apiKey, sub.name);
+    allFiles = allFiles.concat(subFiles);
+  }
 
-  songInfo: { flexDirection: 'row', alignItems: 'flex-start', paddingHorizontal: 24, marginBottom: 20 },
-  songInfoLeft: { flex: 1 },
-  songTitle: { fontSize: 22, fontWeight: '800', color: '#fff', marginBottom: 4 },
-  songArtist: { fontSize: 15, color: '#9B59B6', fontWeight: '600', marginBottom: 2 },
-  songAlbum: { fontSize: 12, color: '#555' },
+  return allFiles;
+}
 
-  progressWrap: { paddingHorizontal: 24, marginBottom: 32 },
-  progressTrack: { height: 4, backgroundColor: '#2A2A35', borderRadius: 2, marginBottom: 8, position: 'relative' },
-  progressFill: { height: '100%', backgroundColor: '#9B59B6', borderRadius: 2 },
-  progressThumb: {
-    position: 'absolute', top: -5, marginLeft: -7,
-    width: 14, height: 14, borderRadius: 7, backgroundColor: '#fff',
-  },
-  progressTimes: { flexDirection: 'row', justifyContent: 'space-between' },
-  timeText: { color: '#555', fontSize: 11 },
+// ─────────────────────────────────────────────────────────────
+// Parse a filename like:
+//   "Juice WRLD - Lucid Dreams (feat. Elegant).mp3"
+//   "01. All Girls Are the Same.mp3"
+//   "Robbery [Unreleased].flac"
+// ─────────────────────────────────────────────────────────────
+function parseFilename(filename) {
+  // Strip extension
+  const name = filename.replace(/\.(mp3|flac|wav|m4a|ogg|aac)$/i, '').trim();
 
-  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 28, marginBottom: 28 },
-  playBtn: {
-    shadowColor: '#9B59B6', shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.5, shadowRadius: 14,
-  },
-  playBtnGrad: { width: 70, height: 70, borderRadius: 35, alignItems: 'center', justifyContent: 'center' },
+  // Try "Artist - Title" pattern
+  const dashParts = name.split(/\s*[-–—]\s*/);
 
-  secondaryControls: { flexDirection: 'row', justifyContent: 'center', gap: 20, paddingBottom: 12 },
-  secondaryBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', backgroundColor: '#111118', borderRadius: 12 },
-  secondaryBtnActive: { backgroundColor: 'rgba(155,89,182,0.15)' },
+  let title = name;
+  let artist = 'Juice WRLD';
 
-  queueWrap: { flex: 1, paddingHorizontal: 16 },
-  queueHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 4 },
-  queueTitle: { fontSize: 20, fontWeight: '800', color: '#fff' },
-  queueCount: { color: '#555', fontSize: 13 },
-  queueRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, borderRadius: 10, marginBottom: 2 },
-  queueRowActive: { backgroundColor: 'rgba(155,89,182,0.12)' },
-  queueArt: { width: 44, height: 44, borderRadius: 8, marginRight: 12 },
-  queueInfo: { flex: 1 },
-  queueSongTitle: { color: '#999', fontSize: 14, fontWeight: '500', marginBottom: 2 },
-  queueSongActive: { color: '#D7BDE2', fontWeight: '700' },
-  queueMetaRow: { flexDirection: 'row', alignItems: 'center' },
-  queueMeta: { color: '#444', fontSize: 11 },
-});
+  if (dashParts.length >= 2) {
+    // If first part looks like an artist name (contains "Juice" or short)
+    if (
+      dashParts[0].toLowerCase().includes('juice') ||
+      dashParts[0].toLowerCase().includes('jw') ||
+      dashParts[0].length < 30
+    ) {
+      artist = dashParts[0].replace(/^\d+\.\s*/, '').trim();
+      title = dashParts.slice(1).join(' - ').trim();
+    }
+  }
+
+  // Strip leading track numbers  "01. Title" or "01 - Title"
+  title = title.replace(/^\d{1,3}[\.\)]\s*/, '').trim();
+  artist = artist.replace(/^\d{1,3}[\.\)]\s*/, '').trim();
+
+  // Detect if unreleased tag in filename
+  const isUnreleased =
+    /unreleased|leak|vault|snippet|demo|wip|rare/i.test(filename);
+
+  // Try to extract year from filename
+  const yearMatch = filename.match(/\b(201[5-9]|202[0-4])\b/);
+  const year = yearMatch ? parseInt(yearMatch[1]) : 2019;
+
+  return { title, artist, isUnreleased, year };
+}
+
+// ─────────────────────────────────────────────────────────────
+// Build the streaming URL for a Drive file
+// Using /uc?export=download which works for public files
+// ─────────────────────────────────────────────────────────────
+export function getStreamUrl(fileId) {
+  // This URL streams/downloads the file directly
+  return `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t`;
+}
+
+// Alternative: use the Drive API stream endpoint (requires API key)
+export function getApiStreamUrl(fileId, apiKey) {
+  return `${BASE}/files/${fileId}?alt=media&key=${apiKey}`;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Get thumbnail URL — Drive provides thumbnails for media files
+// ─────────────────────────────────────────────────────────────
+export function getThumbnailUrl(file) {
+  // Drive's thumbnailLink is the best source (has embedded art)
+  if (file.thumbnailLink) {
+    // Upgrade resolution: replace s220 with s500
+    return file.thumbnailLink.replace(/=s\d+$/, '=s500');
+  }
+  // Fallback: generic Drive file thumbnail
+  return `https://drive.google.com/thumbnail?id=${file.id}&sz=w500`;
+}
+
+// Default album art fallback (Juice WRLD themed)
+const DEFAULT_ART = [
+  'https://i.scdn.co/image/ab67616d0000b273c65e3b9b4c48f7ca2cca32a3', // Fighting Demons
+  'https://i.scdn.co/image/ab67616d0000b2737f7e9ec43de02b498b5ceef7', // LND
+  'https://i.scdn.co/image/ab67616d0000b273fdf22c7bd15b9ddb14a0d3ac', // DRFL
+  'https://i.scdn.co/image/ab67616d0000b2734a3fbe9a88c37d8d7ad66380', // GGR
+];
+
+// ─────────────────────────────────────────────────────────────
+// MAIN EXPORT: Fetch all songs from the Drive folder
+// Returns array of song objects ready for the app
+// ─────────────────────────────────────────────────────────────
+export async function fetchDriveSongs(apiKey = GOOGLE_API_KEY) {
+  if (!apiKey || apiKey === 'YOUR_GOOGLE_DRIVE_API_KEY_HERE') {
+    console.warn('[Drive] No API key — returning empty list');
+    return [];
+  }
+
+  try {
+    console.log('[Drive] Fetching songs from folder:', ROOT_FOLDER_ID);
+    const rawFiles = await getAllAudioFiles(ROOT_FOLDER_ID, apiKey);
+    console.log(`[Drive] Found ${rawFiles.length} audio files`);
+
+    const songs = rawFiles.map((file, index) => {
+      const { title, artist, isUnreleased, year } = parseFilename(file.name);
+      const art = getThumbnailUrl(file) || DEFAULT_ART[index % DEFAULT_ART.length];
+
+      return {
+        id: `drive_${file.id}`,
+        title,
+        artist,
+        album: isUnreleased
+          ? (file._folderName || 'Unreleased Vault')
+          : (file._folderName || 'Juice WRLD'),
+        year,
+        duration: 0, // Will be resolved when audio loads
+        // Two stream URLs — try primary, fall back to secondary
+        streamUrl: getStreamUrl(file.id),
+        streamUrlApi: getApiStreamUrl(file.id, apiKey),
+        albumArt: art,
+        thumbnailLink: file.thumbnailLink || null,
+        type: isUnreleased ? 'unreleased' : 'released',
+        driveFileId: file.id,
+        driveFileName: file.name,
+        source: 'googledrive',
+      };
+    });
+
+    // Sort: released first, then unreleased, then alphabetically
+    songs.sort((a, b) => {
+      if (a.type !== b.type) return a.type === 'released' ? -1 : 1;
+      return a.title.localeCompare(b.title);
+    });
+
+    return songs;
+  } catch (err) {
+    console.error('[Drive] Failed to fetch songs:', err.message);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Fetch just the file metadata for a single song (e.g. duration)
+// ─────────────────────────────────────────────────────────────
+export async function fetchFileMetadata(fileId, apiKey = GOOGLE_API_KEY) {
+  try {
+    const url =
+      `${BASE}/files/${fileId}?` +
+      `key=${apiKey}` +
+      `&fields=id,name,size,thumbnailLink,imageMediaMetadata,videoMediaMetadata`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
