@@ -1,0 +1,47 @@
+name: Juiceify iOS Build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Setup Expo & EAS
+        run: |
+          npm install -g expo-cli eas-cli
+          echo "Expo/EAS installed"
+
+      - name: EAS Build (iOS)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas build \
+            --platform ios \
+            --profile production \
+            --non-interactive \
+            --local \
+            --output ./Juiceify.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Juiceify-iOS
+          path: ./Juiceify.ipa
+          retention-days: 30
